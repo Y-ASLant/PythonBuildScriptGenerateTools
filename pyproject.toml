@@ -1,0 +1,11 @@
+[project]
+name = "python-build-script-generate"
+version = "1.0.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "loguru>=0.7.3",
+    "nuitka>=2.7.12",
+    "setuptools>=80.9.0",
+]
