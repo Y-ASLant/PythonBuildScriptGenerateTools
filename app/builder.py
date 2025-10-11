@@ -46,8 +46,13 @@ class NuitkaScriptBuilder:
             self.ui_utils.display_summary(self.config_collector)
 
             # 生成参数
-            args = self.script_generator.generate_nuitka_args(self.config_collector)
-            logger.info("🔧 生成的Nuitka参数:")
+            args = self.script_generator.generate_build_args(self.config_collector)
+            tool_name = (
+                "Nuitka"
+                if self.config_collector.build_tool == "nuitka"
+                else "PyInstaller"
+            )
+            logger.info(f"🔧 生成的{tool_name}参数:")
             logger.info(" ".join(args))
 
             # 生成Python脚本
@@ -57,6 +62,9 @@ class NuitkaScriptBuilder:
 
             # 保存脚本
             logger.info("💾 保存脚本...")
+
+            # PyInstaller不需要额外的版本信息文件
+
             if self.script_generator.save_script(python_script, self.config_collector):
                 logger.success("🎉 脚本生成完成！")
                 logger.info(

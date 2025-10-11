@@ -10,10 +10,18 @@ class InputHandlers:
     """用户输入处理器集合"""
 
     @staticmethod
-    def get_yes_no_input(prompt: str, default: str = "n") -> bool:
+    def get_yes_no_input(prompt: str, default: str = "n", help_text: str = None) -> bool:
         """获取是/否输入"""
         while True:
-            response = input(f"{prompt} (y/n, 默认{default}): ").strip().lower()
+            display_prompt = f"{prompt} (y/n, 默认{default})"
+            
+            response = input(f"{display_prompt}: ").strip().lower()
+            
+            # 处理帮助请求（支持中英文问号）
+            if response in ["?", "？"] and help_text:
+                logger.info(f"💡 {help_text}")
+                continue
+            
             if not response:
                 response = default
 
@@ -25,14 +33,22 @@ class InputHandlers:
                 logger.error("❌ 请输入 y 或 n")
 
     @staticmethod
-    def get_choice_input(prompt: str, choices: dict, default: str = None) -> str:
+    def get_choice_input(prompt: str, choices: dict, default: str = None, help_text: str = None) -> str:
         """获取选择输入"""
         # 显示选项
         for key, desc in choices.items():
             logger.info(f"{key}. {desc}")
 
         while True:
-            choice = input(f"{prompt} (默认{default}): ").strip()
+            display_prompt = f"{prompt} (默认{default})"
+            
+            choice = input(f"{display_prompt}: ").strip()
+            
+            # 处理帮助请求（支持中英文问号）
+            if choice in ["?", "？"] and help_text:
+                logger.info(f"💡 {help_text}")
+                continue
+            
             if not choice and default:
                 choice = default
 
@@ -43,15 +59,23 @@ class InputHandlers:
                 logger.error(f"❌ 请输入有效选项 ({valid_choices})")
 
     @staticmethod
-    def get_text_input(prompt: str, default: str = None, required: bool = False) -> str:
+    def get_text_input(prompt: str, default: str = None, required: bool = False, help_text: str = None) -> str:
         """获取文本输入"""
         while True:
             if default:
-                text = input(f"{prompt} (默认: {default}): ").strip()
-                if not text:
-                    text = default
+                display_prompt = f"{prompt} (默认: {default})"
             else:
-                text = input(f"{prompt}: ").strip()
+                display_prompt = prompt
+            
+            text = input(f"{display_prompt}: ").strip()
+            
+            # 处理帮助请求（支持中英文问号）
+            if text in ["?", "？"] and help_text:
+                logger.info(f"💡 {help_text}")
+                continue
+            
+            if not text and default:
+                text = default
 
             if required and not text:
                 logger.error("❌ 此项不能为空")
@@ -61,16 +85,24 @@ class InputHandlers:
 
     @staticmethod
     def get_integer_input(
-        prompt: str, default: int = None, min_value: int = None
+        prompt: str, default: int = None, min_value: int = None, help_text: str = None
     ) -> int:
         """获取整数输入"""
         while True:
             if default is not None:
-                value_str = input(f"{prompt} (默认: {default}): ").strip()
-                if not value_str:
-                    return default
+                display_prompt = f"{prompt} (默认: {default})"
             else:
-                value_str = input(f"{prompt}: ").strip()
+                display_prompt = prompt
+            
+            value_str = input(f"{display_prompt}: ").strip()
+            
+            # 处理帮助请求（支持中英文问号）
+            if value_str in ["?", "？"] and help_text:
+                logger.info(f"💡 {help_text}")
+                continue
+            
+            if not value_str and default is not None:
+                return default
 
             try:
                 value = int(value_str)
@@ -82,10 +114,19 @@ class InputHandlers:
                 logger.error("❌ 请输入有效的数字")
 
     @staticmethod
-    def get_list_input(prompt: str, separator: str = ",") -> list[str]:
+    def get_list_input(prompt: str, separator: str = ",", help_text: str = None) -> list[str]:
         """获取列表输入"""
-        text = input(f"{prompt}: ").strip()
-        if not text:
-            return []
+        while True:
+            display_prompt = prompt
+            
+            text = input(f"{display_prompt}: ").strip()
+            
+            # 处理帮助请求（支持中英文问号）
+            if text in ["?", "？"] and help_text:
+                logger.info(f"💡 {help_text}")
+                continue
+            
+            if not text:
+                return []
 
-        return [item.strip() for item in text.split(separator) if item.strip()]
+            return [item.strip() for item in text.split(separator) if item.strip()]
