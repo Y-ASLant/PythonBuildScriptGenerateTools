@@ -91,6 +91,9 @@ def main():
     log_success("🎉 构建完成！")
     log_info("输出位置: {output_dir}")
     log_info(f"⏱️  总耗时: {{minutes}}分{{seconds}}秒")
+    
+    # Linux包生成（如果启用）
+    {linux_package_code}
 
 
 def copy_additional_files():
@@ -266,6 +269,9 @@ def main():
     log_success("🎉 构建完成！")
     log_info("输出位置: {output_dir}")
     log_info(f"⏱️  总耗时: {{minutes}}分{{seconds}}秒")
+    
+    # Linux包生成（如果启用）
+    {linux_package_code}
 
 
 def copy_additional_files():

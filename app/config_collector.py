@@ -6,7 +6,7 @@
 import sys
 from pathlib import Path
 from typing import Optional
-from loguru import logger
+from .logger_utils import log_info, log_success, log_error, log_warning
 from .interactive_menu import InteractiveMenu
 from .plugins import get_plugin_list
 from .config_validators import ConfigValidators
@@ -45,32 +45,36 @@ class ConfigCollector:
         self.upx_dir: Optional[str] = None  # UPX压缩工具路径
         self.debug: bool = False  # 调试模式
         self.clean: bool = True  # 清理临时文件
+        # Linux包生成选项
+        self.generate_linux_packages: bool = False  # 是否生成Linux包
+        self.linux_packaging_tool: str = "nfpm"  # nfpm 或 fpm
+        self.linux_package_types: list = ["deb"]  # 包类型
 
     def get_project_dir(self):
         """获取项目根目录"""
         while True:
             project_dir = InputHandlers.get_text_input(
-                "📂 请输入项目根目录", 
-                default=".", 
-                help_text="请输入需要打包的Python项目的根目录路径。这是包含您的Python代码和相关文件的主目录。可以是绝对路径或相对路径，默认为当前目录(.)"
+                "📂 请输入项目根目录",
+                default=".",
+                help_text="请输入需要打包的Python项目的根目录路径。这是包含您的Python代码和相关文件的主目录。可以是绝对路径或相对路径，默认为当前目录(.)",
             )
 
             is_valid, result = ConfigValidators.validate_project_dir(project_dir)
             if is_valid:
                 self.project_dir = result
-                logger.success(f"✅ 项目目录: {self.project_dir}")
+                log_success(f"✅ 项目目录: {self.project_dir}")
                 break
             else:
-                logger.error(f"❌ {result}")
+                log_error(f"❌ {result}")
 
     def get_entry_file(self):
         """获取入口文件"""
         while True:
             entry = InputHandlers.get_text_input(
-                "📁 请输入Python入口文件路径 (相对于项目目录)", 
-                default="main.py", 
+                "📁 请输入Python入口文件路径 (相对于项目目录)",
+                default="main.py",
                 required=True,
-                help_text="请输入您的Python程序的主入口文件路径。这是程序启动时执行的.py文件，通常包含main()函数或程序的主要逻辑。路径相对于项目根目录"
+                help_text="请输入您的Python程序的主入口文件路径。这是程序启动时执行的.py文件，通常包含main()函数或程序的主要逻辑。路径相对于项目根目录",
             )
 
             is_valid, result = ConfigValidators.validate_entry_file(
@@ -78,28 +82,28 @@ class ConfigCollector:
             )
             if is_valid:
                 self.entry_file = result
-                logger.success(f"✅ 入口文件: {self.entry_file}")
+                log_success(f"✅ 入口文件: {self.entry_file}")
                 break
             else:
-                logger.error(f"❌ {result}")
+                log_error(f"❌ {result}")
 
     def get_icon_file(self):
         """获取图标文件"""
         icon = InputHandlers.get_text_input(
-            "🎨 请输入图标文件路径 (仅支持.ico格式，可选项，直接回车跳过)", 
+            "🎨 请输入图标文件路径 (仅支持.ico格式，可选项，直接回车跳过)",
             default="app.ico",
-            help_text="请输入应用程序图标文件的路径。图标将显示在可执行文件上，仅支持.ico格式。路径相对于项目根目录。如果不需要图标，直接回车跳过"
+            help_text="请输入应用程序图标文件的路径。图标将显示在可执行文件上，仅支持.ico格式。路径相对于项目根目录。如果不需要图标，直接回车跳过",
         )
 
         is_valid, result = ConfigValidators.validate_icon_file(icon, self.project_dir)
         if is_valid:
             self.icon_file = result
             if result:
-                logger.success(f"✅ 图标文件: {self.icon_file}")
+                log_success(f"✅ 图标文件: {self.icon_file}")
             else:
-                logger.info("⏭️  跳过图标设置")
+                log_info("⏭️  跳过图标设置")
         else:
-            logger.warning(f"⚠️  {result}，将跳过")
+            log_warning(f"⚠️  {result}，将跳过")
             self.icon_file = None
 
     def get_build_tool_settings(self):
@@ -110,15 +114,15 @@ class ConfigCollector:
         }
 
         choice = InputHandlers.get_choice_input(
-            "🛠️  请选择构建工具", 
-            choices, 
+            "🛠️  请选择构建工具",
+            choices,
             "1",
-            help_text="选择用于打包Python程序的工具。Nuitka：编译为机器码，性能好但打包慢；PyInstaller：打包快速，兼容性好但体积较大"
+            help_text="选择用于打包Python程序的工具。Nuitka：编译为机器码，性能好但打包慢；PyInstaller：打包快速，兼容性好但体积较大",
         )
 
         tool_map = {"1": "nuitka", "2": "pyinstaller"}
         self.build_tool = tool_map[choice]
-        logger.success(f"✅ 构建工具: {self.build_tool}")
+        log_success(f"✅ 构建工具: {self.build_tool}")
 
     def get_compiler_settings(self):
         """获取编译器设置（仅Nuitka使用）"""
@@ -132,49 +136,49 @@ class ConfigCollector:
         }
 
         choice = InputHandlers.get_choice_input(
-            "🔧 请选择编译器", 
-            choices, 
+            "🔧 请选择编译器",
+            choices,
             "3",
-            help_text="选择Nuitka使用的C++编译器。MinGW64：Windows上的GCC；MSVC：微软Visual Studio编译器；Clang：跨平台编译器，推荐选择"
+            help_text="选择Nuitka使用的C++编译器。MinGW64：Windows上的GCC；MSVC：微软Visual Studio编译器；Clang：跨平台编译器，推荐选择",
         )
 
         compiler_map = {"1": "mingw64", "2": "msvc", "3": "clang"}
         self.compiler = compiler_map[choice]
-        logger.success(f"✅ 编译器: {self.compiler}")
+        log_success(f"✅ 编译器: {self.compiler}")
 
     def get_console_settings(self):
         """获取控制台显示设置"""
         self.show_console = InputHandlers.get_yes_no_input(
-            "🖥️  是否显示控制台窗口?", 
+            "🖥️  是否显示控制台窗口?",
             "y",
-            help_text="选择是否在运行程序时显示控制台窗口。选择'是'：可以看到程序的输出信息和错误；选择'否'：程序将在后台运行，适合GUI应用"
+            help_text="选择是否在运行程序时显示控制台窗口。选择'是'：可以看到程序的输出信息和错误；选择'否'：程序将在后台运行，适合GUI应用",
         )
         if self.show_console:
-            logger.success("✅ 将显示控制台窗口")
+            log_success("✅ 将显示控制台窗口")
         else:
-            logger.success("✅ 将隐藏控制台窗口")
+            log_success("✅ 将隐藏控制台窗口")
 
     def get_app_name(self):
         """获取应用名称"""
         if self.entry_file:
             default_name = Path(self.entry_file).stem
             self.app_name = InputHandlers.get_text_input(
-                "📝 请输入应用名称", 
+                "📝 请输入应用名称",
                 default=default_name,
-                help_text="请输入打包后可执行文件的名称。这将是最终生成的.exe文件的名称（Windows）或可执行文件名称（Linux/macOS）。默认使用入口文件的名称"
+                help_text="请输入打包后可执行文件的名称。这将是最终生成的.exe文件的名称（Windows）或可执行文件名称（Linux/macOS）。默认使用入口文件的名称",
             )
             # 确保应用名称不包含文件扩展名
             if self.app_name.endswith(".py"):
                 self.app_name = self.app_name[:-3]
-            logger.success(f"✅ 应用名称: {self.app_name}")
+            log_success(f"✅ 应用名称: {self.app_name}")
 
     def get_additional_settings(self):
         """获取其他设置"""
         # 输出目录
         self.output_dir = InputHandlers.get_text_input(
-            "📂 请输入输出目录", 
+            "📂 请输入输出目录",
             "build",
-            help_text="请输入打包后文件的输出目录。所有生成的可执行文件和相关文件将保存在此目录中。相对于项目根目录"
+            help_text="请输入打包后文件的输出目录。所有生成的可执行文件和相关文件将保存在此目录中。相对于项目根目录",
         )
 
         if self.build_tool == "nuitka":
@@ -189,44 +193,50 @@ class ConfigCollector:
         """获取Nuitka特有设置"""
         # 是否独立打包
         self.standalone = InputHandlers.get_yes_no_input(
-            "📦 是否创建独立可执行文件?", 
+            "📦 是否创建独立可执行文件?",
             "y",
-            help_text="选择是否创建独立的可执行文件。选择'是'：打包所有依赖，可在没有Python环境的机器上运行；选择'否'：需要目标机器已安装Python"
+            help_text="选择是否创建独立的可执行文件。选择'是'：打包所有依赖，可在没有Python环境的机器上运行；选择'否'：需要目标机器已安装Python",
         )
-        self._log_boolean_choice(self.standalone, "将创建独立可执行文件", "将创建依赖系统Python的可执行文件")
+        self._log_boolean_choice(
+            self.standalone, "将创建独立可执行文件", "将创建依赖系统Python的可执行文件"
+        )
 
         # 是否单文件模式
         if self.standalone:
             self.onefile = InputHandlers.get_yes_no_input(
-                "📄 是否启用单文件模式?", 
+                "📄 是否启用单文件模式?",
                 "y",
-                help_text="选择是否将所有文件打包成单个可执行文件。选择'是'：生成单个.exe文件，便于分发；选择'否'：生成文件夹，启动速度更快"
+                help_text="选择是否将所有文件打包成单个可执行文件。选择'是'：生成单个.exe文件，便于分发；选择'否'：生成文件夹，启动速度更快",
             )
-            self._log_boolean_choice(self.onefile, "将创建单个可执行文件", "将创建文件夹形式的可执行文件")
+            self._log_boolean_choice(
+                self.onefile, "将创建单个可执行文件", "将创建文件夹形式的可执行文件"
+            )
 
         # 编译线程数
         self.jobs = InputHandlers.get_integer_input(
-            "⚡ 请输入编译线程数", 
-            4, 
+            "⚡ 请输入编译线程数",
+            4,
             1,
-            help_text="设置编译时使用的并行线程数。更多线程可以加快编译速度，但会消耗更多CPU和内存。建议设置为CPU核心数"
+            help_text="设置编译时使用的并行线程数。更多线程可以加快编译速度，但会消耗更多CPU和内存。建议设置为CPU核心数",
         )
 
         # 进度条显示
         self.show_progressbar = InputHandlers.get_yes_no_input(
-            "📊 是否显示进度条?", 
+            "📊 是否显示进度条?",
             "y",
-            help_text="选择是否在编译过程中显示进度条。显示进度条可以了解编译进度，但在某些环境下可能影响性能"
+            help_text="选择是否在编译过程中显示进度条。显示进度条可以了解编译进度，但在某些环境下可能影响性能",
         )
         self._log_boolean_choice(self.show_progressbar, "将显示进度条", "将隐藏进度条")
 
         # 移除构建文件
         self.remove_output = InputHandlers.get_yes_no_input(
-            "🗑️  是否移除编译后的构建文件?", 
+            "🗑️  是否移除编译后的构建文件?",
             "y",
-            help_text="选择是否在编译完成后删除中间构建文件。选择'是'：节省磁盘空间；选择'否'：保留文件便于调试"
+            help_text="选择是否在编译完成后删除中间构建文件。选择'是'：节省磁盘空间；选择'否'：保留文件便于调试",
         )
-        self._log_boolean_choice(self.remove_output, "将移除编译后的构建文件", "保留编译后的构建文件")
+        self._log_boolean_choice(
+            self.remove_output, "将移除编译后的构建文件", "保留编译后的构建文件"
+        )
 
         # 插件选择
         self.get_plugin_settings()
@@ -235,11 +245,13 @@ class ConfigCollector:
         """获取PyInstaller特有设置"""
         # 是否单文件模式
         self.onefile = InputHandlers.get_yes_no_input(
-            "📄 是否启用单文件模式?", 
+            "📄 是否启用单文件模式?",
             "y",
-            help_text="选择是否将所有文件打包成单个可执行文件。选择'是'：生成单个.exe文件，便于分发；选择'否'：生成文件夹，启动速度更快"
+            help_text="选择是否将所有文件打包成单个可执行文件。选择'是'：生成单个.exe文件，便于分发；选择'否'：生成文件夹，启动速度更快",
         )
-        self._log_boolean_choice(self.onefile, "将创建单个可执行文件", "将创建文件夹形式的可执行文件")
+        self._log_boolean_choice(
+            self.onefile, "将创建单个可执行文件", "将创建文件夹形式的可执行文件"
+        )
 
         # PyInstaller特有设置
         self.get_pyinstaller_settings()
@@ -248,54 +260,58 @@ class ConfigCollector:
         """获取通用设置"""
         # 公司名称
         self.company_name = InputHandlers.get_text_input(
-            "🏢 请输入公司名称 (可选)", 
+            "🏢 请输入公司名称 (可选)",
             "ASLant",
-            help_text="请输入软件开发公司或组织的名称。这将显示在可执行文件的属性信息中，可选项"
+            help_text="请输入软件开发公司或组织的名称。这将显示在可执行文件的属性信息中，可选项",
         )
 
         # 文件版本
         self.file_version = InputHandlers.get_text_input(
-            "🔢 请输入文件版本", 
+            "🔢 请输入文件版本",
             "1.0.0",
-            help_text="请输入软件的版本号，格式为 x.y.z (如 1.0.0)。这将显示在可执行文件的属性信息中"
+            help_text="请输入软件的版本号，格式为 x.y.z (如 1.0.0)。这将显示在可执行文件的属性信息中",
         )
 
         # 静默模式
         self.quiet_mode = InputHandlers.get_yes_no_input(
-            "🔇 是否启用静默模式(减少输出信息)?", 
+            "🔇 是否启用静默模式(减少输出信息)?",
             "y",
-            help_text="选择是否启用静默模式。选择'是'：减少编译过程中的输出信息，界面更简洁；选择'否'：显示详细的编译信息"
+            help_text="选择是否启用静默模式。选择'是'：减少编译过程中的输出信息，界面更简洁；选择'否'：显示详细的编译信息",
         )
-        self._log_boolean_choice(self.quiet_mode, "将启用静默模式", "将显示详细输出信息")
+        self._log_boolean_choice(
+            self.quiet_mode, "将启用静默模式", "将显示详细输出信息"
+        )
 
         # Windows UAC管理员权限
         if sys.platform.startswith("win"):
             self.uac_admin = InputHandlers.get_yes_no_input(
-                "🔐 是否需要管理员权限(UAC)?", 
+                "🔐 是否需要管理员权限(UAC)?",
                 "n",
-                help_text="选择程序是否需要管理员权限运行。选择'是'：程序启动时会弹出UAC提示；选择'否'：程序以普通用户权限运行"
+                help_text="选择程序是否需要管理员权限运行。选择'是'：程序启动时会弹出UAC提示；选择'否'：程序以普通用户权限运行",
             )
-            self._log_boolean_choice(self.uac_admin, "将请求管理员权限", "不请求管理员权限")
+            self._log_boolean_choice(
+                self.uac_admin, "将请求管理员权限", "不请求管理员权限"
+            )
 
         # 包排除选择
         self.get_exclude_packages_settings()
 
         # 需要复制的目录
-        logger.info("📁 需要复制到输出目录的文件夹 (可选，多个用逗号分隔):")
+        log_info("📁 需要复制到输出目录的文件夹 (可选，多个用逗号分隔):")
         self.copy_dirs = InputHandlers.get_list_input(
             "例如: assets,models,libs",
-            help_text="请输入需要复制到输出目录的文件夹名称，多个文件夹用逗号分隔。这些文件夹将被完整复制到可执行文件旁边"
+            help_text="请输入需要复制到输出目录的文件夹名称，多个文件夹用逗号分隔。这些文件夹将被完整复制到可执行文件旁边",
         )
 
     def get_script_filename(self):
         """获取脚本文件名"""
         filename = InputHandlers.get_text_input(
-            "📄 请输入脚本文件名", 
+            "📄 请输入脚本文件名",
             self.script_filename,
-            help_text="请输入生成的打包脚本的文件名。这个脚本包含了所有打包配置，可以重复运行来打包程序"
+            help_text="请输入生成的打包脚本的文件名。这个脚本包含了所有打包配置，可以重复运行来打包程序",
         )
         self.script_filename = ConfigValidators.validate_script_filename(filename)
-        logger.success(f"✅ 脚本文件名: {self.script_filename}")
+        log_success(f"✅ 脚本文件名: {self.script_filename}")
 
     def get_plugin_settings(self):
         """获取插件设置"""
@@ -304,7 +320,7 @@ class ConfigCollector:
         if enable_plugins:
             self._get_plugins_interactive()
         else:
-            logger.info("⏭️  跳过插件选择")
+            log_info("⏭️  跳过插件选择")
             self.enable_plugins = []
 
     def _get_plugins_interactive(self):
@@ -330,21 +346,21 @@ class ConfigCollector:
                         final_plugins.append(plugin_key)
 
                 self.enable_plugins = final_plugins
-                logger.success(f"✅ 已选择插件: {', '.join(final_plugins)}")
+                log_success(f"✅ 已选择插件: {', '.join(final_plugins)}")
             else:
-                logger.info("⏭️  跳过插件选择")
+                log_info("⏭️  跳过插件选择")
                 self.enable_plugins = []
         except Exception as e:
-            logger.error(f"❌ 交互式菜单出错: {e}")
-            logger.info("⏭️  跳过插件选择")
+            log_error(f"❌ 交互式菜单出错: {e}")
+            log_info("⏭️  跳过插件选择")
             self.enable_plugins = []
 
     def _get_custom_plugins(self):
         """获取自定义插件输入"""
         custom_plugins = []
-        logger.info("🔧 自定义插件输入")
-        logger.info("请输入自定义插件名称，多个插件用逗号分隔")
-        logger.info("例如: numpy,scipy,requests")
+        log_info("🔧 自定义插件输入")
+        log_info("请输入自定义插件名称，多个插件用逗号分隔")
+        log_info("例如: numpy,scipy,requests")
 
         while True:
             custom_input = input("🔌 请输入插件名称 (直接回车跳过): ").strip()
@@ -361,12 +377,12 @@ class ConfigCollector:
                     # 简单验证插件名称格式
                     if plugin_name.replace("-", "").replace("_", "").isalnum():
                         custom_plugins.append(plugin_name)
-                        logger.success(f"✅ 添加自定义插件: {plugin_name}")
+                        log_success(f"✅ 添加自定义插件: {plugin_name}")
                     else:
-                        logger.warning(f"⚠️  跳过无效插件名: {plugin_name}")
+                        log_warning(f"⚠️  跳过无效插件名: {plugin_name}")
                 break
             else:
-                logger.warning("⚠️  请输入有效的插件名称")
+                log_warning("⚠️  请输入有效的插件名称")
 
         return custom_plugins
 
@@ -379,7 +395,7 @@ class ConfigCollector:
         if exclude_packages:
             self._get_exclude_packages_interactive()
         else:
-            logger.info("⏭️  跳过包排除设置")
+            log_info("⏭️  跳过包排除设置")
             self.exclude_packages = []
 
     def _get_installed_packages(self):
@@ -399,7 +415,7 @@ class ConfigCollector:
             return installed_packages
 
         except Exception as e:
-            logger.warning(f"⚠️  获取已安装包列表失败: {e}")
+            log_warning(f"⚠️  获取已安装包列表失败: {e}")
             return []
 
     def _get_exclude_packages_interactive(self):
@@ -407,11 +423,11 @@ class ConfigCollector:
         menu = InteractiveMenu()
 
         # 获取已安装的包列表
-        logger.info("📦 正在获取当前环境已安装的包...")
+        log_info("📦 正在获取当前环境已安装的包...")
         installed_packages = self._get_installed_packages()
 
         if not installed_packages:
-            logger.warning("⚠️  未找到已安装的包，使用手动输入模式")
+            log_warning("⚠️  未找到已安装的包，使用手动输入模式")
             self._get_exclude_packages_manual()
             return
 
@@ -434,21 +450,21 @@ class ConfigCollector:
                         final_excludes.append(package_key)
 
                 self.exclude_packages = final_excludes
-                logger.success(f"✅ 已选择排除包: {', '.join(final_excludes)}")
+                log_success(f"✅ 已选择排除包: {', '.join(final_excludes)}")
             else:
-                logger.info("⏭️  跳过包排除设置")
+                log_info("⏭️  跳过包排除设置")
                 self.exclude_packages = []
         except Exception as e:
-            logger.error(f"❌ 交互式菜单出错: {e}")
-            logger.info("⏭️  跳过包排除设置")
+            log_error(f"❌ 交互式菜单出错: {e}")
+            log_info("⏭️  跳过包排除设置")
             self.exclude_packages = []
 
     def _get_exclude_packages_manual(self):
         """手动输入要排除的包名"""
         manual_excludes = []
-        logger.info("🔧 手动输入包排除")
-        logger.info("请输入要排除的包名，多个包用逗号分隔")
-        logger.info("例如: numpy,pandas,matplotlib")
+        log_info("🔧 手动输入包排除")
+        log_info("请输入要排除的包名，多个包用逗号分隔")
+        log_info("例如: numpy,pandas,matplotlib")
 
         while True:
             exclude_input = input("🚫 请输入包名 (直接回车跳过): ").strip()
@@ -470,124 +486,197 @@ class ConfigCollector:
                         .isalnum()
                     ):
                         manual_excludes.append(package_name)
-                        logger.success(f"✅ 添加排除包: {package_name}")
+                        log_success(f"✅ 添加排除包: {package_name}")
                     else:
-                        logger.warning(f"⚠️  跳过无效包名: {package_name}")
+                        log_warning(f"⚠️  跳过无效包名: {package_name}")
                 break
             else:
-                logger.warning("⚠️  请输入有效的包名")
+                log_warning("⚠️  请输入有效的包名")
 
         return manual_excludes
 
     def get_pyinstaller_settings(self):
         """获取PyInstaller特有设置"""
-        logger.info("🔧 PyInstaller特有配置")
-        
+        log_info("🔧 PyInstaller特有配置")
+
         # 隐藏导入
         hidden_imports = InputHandlers.get_yes_no_input(
-            "📦 是否需要添加隐藏导入?", 
+            "📦 是否需要添加隐藏导入?",
             "n",
-            help_text="添加PyInstaller无法自动检测到的模块。如果程序运行时提示缺少某些模块，可以在这里手动指定导入"
+            help_text="添加PyInstaller无法自动检测到的模块。如果程序运行时提示缺少某些模块，可以在这里手动指定导入",
         )
         if hidden_imports:
-            logger.info("请输入需要隐藏导入的模块，多个用逗号分隔")
-            logger.info("例如: numpy,pandas,requests")
+            log_info("请输入需要隐藏导入的模块，多个用逗号分隔")
+            log_info("例如: numpy,pandas,requests")
             self.hidden_imports = InputHandlers.get_list_input(
                 "隐藏导入模块",
-                help_text="请输入需要隐藏导入的模块名称，多个模块用逗号分隔。例如：numpy,pandas,requests"
+                help_text="请输入需要隐藏导入的模块名称，多个模块用逗号分隔。例如：numpy,pandas,requests",
             )
             if self.hidden_imports:
-                logger.success(f"✅ 隐藏导入: {', '.join(self.hidden_imports)}")
+                log_success(f"✅ 隐藏导入: {', '.join(self.hidden_imports)}")
 
         # 收集所有子模块
         collect_all = InputHandlers.get_yes_no_input(
-            "📚 是否收集某些包的所有子模块?", 
+            "📚 是否收集某些包的所有子模块?",
             "n",
-            help_text="强制收集指定包的所有子模块。适用于动态导入的模块，如tkinter、PIL等大型包，确保所有子模块都被包含"
+            help_text="强制收集指定包的所有子模块。适用于动态导入的模块，如tkinter、PIL等大型包，确保所有子模块都被包含",
         )
         if collect_all:
-            logger.info("请输入需要收集所有子模块的包，多个用逗号分隔")
-            logger.info("例如: tkinter,PIL,matplotlib")
+            log_info("请输入需要收集所有子模块的包，多个用逗号分隔")
+            log_info("例如: tkinter,PIL,matplotlib")
             self.collect_all = InputHandlers.get_list_input(
                 "收集子模块的包",
-                help_text="请输入需要收集所有子模块的包名称，多个包用逗号分隔。例如：tkinter,PIL,matplotlib"
+                help_text="请输入需要收集所有子模块的包名称，多个包用逗号分隔。例如：tkinter,PIL,matplotlib",
             )
             if self.collect_all:
-                logger.success(f"✅ 收集子模块: {', '.join(self.collect_all)}")
+                log_success(f"✅ 收集子模块: {', '.join(self.collect_all)}")
 
         # 添加数据文件
         add_data = InputHandlers.get_yes_no_input(
-            "📁 是否需要添加数据文件?", 
+            "📁 是否需要添加数据文件?",
             "n",
-            help_text="添加程序需要的数据文件（如配置文件、图片、文档等）到打包中。格式：源路径;目标路径，多个文件用逗号分隔"
+            help_text="添加程序需要的数据文件（如配置文件、图片、文档等）到打包中。格式：源路径;目标路径，多个文件用逗号分隔",
         )
         if add_data:
-            logger.info("请输入数据文件路径，格式: 源路径;目标路径")
-            logger.info("例如: data/config.ini;data")
-            logger.info("💡 多个数据文件需要使用逗号隔开，如: data/config.ini;data,assets/logo.png;assets")
+            log_info("请输入数据文件路径，格式: 源路径;目标路径")
+            log_info("例如: data/config.ini;data")
+            log_info(
+                "💡 多个数据文件需要使用逗号隔开，如: data/config.ini;data,assets/logo.png;assets"
+            )
             while True:
                 data_path = input("📁 数据文件路径 (直接回车结束): ").strip()
                 if not data_path:
                     break
-                
+
                 # 支持逗号分隔的多个数据文件
                 data_paths = [path.strip() for path in data_path.split(",")]
                 for single_path in data_paths:
                     if ";" in single_path:
                         self.add_data.append(single_path)
-                        logger.success(f"✅ 添加数据文件: {single_path}")
+                        log_success(f"✅ 添加数据文件: {single_path}")
                     else:
-                        logger.warning(f"⚠️  格式错误: {single_path}，请使用 源路径;目标路径 格式")
+                        log_warning(
+                            f"⚠️  格式错误: {single_path}，请使用 源路径;目标路径 格式"
+                        )
 
         # UPX压缩
         upx_compress = InputHandlers.get_yes_no_input(
-            "🗜️  是否启用UPX压缩?", 
+            "🗜️  是否启用UPX压缩?",
             "n",
-            help_text="使用UPX工具压缩可执行文件以减小体积。需要系统中安装UPX工具。压缩后文件更小但启动可能稍慢"
+            help_text="使用UPX工具压缩可执行文件以减小体积。需要系统中安装UPX工具。压缩后文件更小但启动可能稍慢",
         )
         if upx_compress:
             upx_path = InputHandlers.get_text_input(
                 "请输入UPX工具路径 (可选，留空自动检测)",
-                help_text="请输入UPX压缩工具的完整路径。如果UPX已添加到系统PATH环境变量，可以留空自动检测"
+                help_text="请输入UPX压缩工具的完整路径。如果UPX已添加到系统PATH环境变量，可以留空自动检测",
             )
             if upx_path:
                 self.upx_dir = upx_path
-                logger.success(f"✅ UPX路径: {self.upx_dir}")
+                log_success(f"✅ UPX路径: {self.upx_dir}")
             else:
                 self.upx_dir = "auto"
-                logger.success("✅ 将自动检测UPX路径")
+                log_success("✅ 将自动检测UPX路径")
 
         # 调试模式
         self.debug = InputHandlers.get_yes_no_input(
-            "🐛 是否启用调试模式?", 
+            "🐛 是否启用调试模式?",
             "n",
-            help_text="启用调试模式会输出详细的编译信息，便于排查问题。通常在遇到编译错误时启用"
+            help_text="启用调试模式会输出详细的编译信息，便于排查问题。通常在遇到编译错误时启用",
         )
         self._log_boolean_choice(self.debug, "将启用调试模式", "将禁用调试模式")
 
         # 清理临时文件
         self.clean = InputHandlers.get_yes_no_input(
-            "🧹 是否清理构建临时文件?", 
+            "🧹 是否清理构建临时文件?",
             "y",
-            help_text="选择是否在打包完成后清理临时构建文件。选择'是'：节省磁盘空间；选择'否'：保留文件便于调试"
+            help_text="选择是否在打包完成后清理临时构建文件。选择'是'：节省磁盘空间；选择'否'：保留文件便于调试",
         )
         self._log_boolean_choice(self.clean, "将清理临时文件", "将保留临时文件")
 
-    def _log_boolean_choice(self, condition: bool, true_message: str, false_message: str):
+    def _log_boolean_choice(
+        self, condition: bool, true_message: str, false_message: str
+    ):
         """记录布尔选择的结果"""
         if condition:
-            logger.success(f"✅ {true_message}")
+            log_success(f"✅ {true_message}")
         else:
-            logger.success(f"✅ {false_message}")
+            log_success(f"✅ {false_message}")
 
-    def collect_all_config(self):
+    def collect_all_config(self, mode="full"):
         """收集所有配置"""
-        self.get_project_dir()
-        self.get_entry_file()
-        self.get_app_name()
-        self.get_icon_file()
-        self.get_build_tool_settings()
-        self.get_compiler_settings()
-        self.get_console_settings()
-        self.get_additional_settings()
-        self.get_script_filename()
+        if mode in ["full", "compile"]:
+            # 编译相关配置
+            self.get_project_dir()
+            self.get_entry_file()
+            self.get_app_name()
+            self.get_icon_file()
+            self.get_build_tool_settings()
+            self.get_compiler_settings()
+            self.get_console_settings()
+            self.get_additional_settings()
+            self.get_script_filename()
+
+        if mode in ["full", "package"]:
+            # Linux包生成配置
+            if mode == "package":
+                # 打包模式下，只需要基本信息
+                self.get_app_name_for_package()
+            self.get_linux_package_settings(mode == "package")
+
+    def get_linux_package_settings(self, force_enable=False):
+        """获取Linux包生成设置"""
+        if force_enable:
+            # 打包模式下强制启用
+            self.generate_linux_packages = True
+            log_success("✅ 打包模式 - 自动启用Linux包生成")
+        else:
+            self.generate_linux_packages = InputHandlers.get_yes_no_input(
+                "📦 是否在编译完成后自动生成Linux安装包",
+                "n",
+                help_text="选择是否在编译完成后自动生成deb/rpm安装包。这样可以一键完成从源码到安装包的整个流程",
+            )
+
+        if self.generate_linux_packages:
+            # 选择打包工具
+            tool_choice = InputHandlers.get_choice_input(
+                "🛠️ 请选择Linux包生成工具",
+                {
+                    "1": "NFPM (推荐，跨平台支持Windows/macOS/Linux，Go语言高性能)",
+                    "2": "FPM (Windows上支持有限，不建议在Windows下使用该工具打包)",
+                },
+                "1",
+                help_text="NFPM是Go编写的现代化打包工具，支持在Windows、macOS、Linux上运行，性能更好，无依赖；FPM是Ruby编写的传统工具，功能全面但需要Ruby环境，在Windows上可能遇到兼容性问题",
+            )
+
+            self.linux_packaging_tool = "nfpm" if tool_choice == "1" else "fpm"
+
+            # 选择包类型
+            deb_choice = InputHandlers.get_yes_no_input(
+                "📦 是否生成 DEB 包 (Debian/Ubuntu)",
+                "y",
+                help_text="DEB包适用于Debian、Ubuntu等基于Debian的Linux发行版",
+            )
+
+            rpm_choice = InputHandlers.get_yes_no_input(
+                "📦 是否生成 RPM 包 (RedHat/CentOS/Fedora)",
+                "y",
+                help_text="RPM包适用于RedHat、CentOS、Fedora等基于RedHat的Linux发行版",
+            )
+
+            self.linux_package_types = []
+            if deb_choice:
+                self.linux_package_types.append("deb")
+            if rpm_choice:
+                self.linux_package_types.append("rpm")
+
+            if not self.linux_package_types:
+                self.linux_package_types = ["deb"]  # 默认生成DEB包
+
+    def get_app_name_for_package(self):
+        """获取打包用的应用名称"""
+        self.app_name = InputHandlers.get_text_input(
+            "📝 请输入应用名称",
+            default="app",
+            help_text="请输入要打包的应用程序名称，这将作为包名。建议使用小写字母和连字符",
+        )
+        log_success(f"✅ 应用名称: {self.app_name}")

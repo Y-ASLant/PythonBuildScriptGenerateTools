@@ -3,7 +3,7 @@
 输入处理模块 - 提供统一的用户输入处理功能
 """
 
-from loguru import logger
+from .logger_utils import log_info, log_error
 
 
 class InputHandlers:
@@ -19,7 +19,7 @@ class InputHandlers:
             
             # 处理帮助请求（支持中英文问号）
             if response in ["?", "？"] and help_text:
-                logger.info(f"💡 {help_text}")
+                log_info(f"💡 {help_text}")
                 continue
             
             if not response:
@@ -30,14 +30,14 @@ class InputHandlers:
             elif response in ["n", "no", "否"]:
                 return False
             else:
-                logger.error("❌ 请输入 y 或 n")
+                log_error("❌ 请输入 y 或 n")
 
     @staticmethod
     def get_choice_input(prompt: str, choices: dict, default: str = None, help_text: str = None) -> str:
         """获取选择输入"""
         # 显示选项
         for key, desc in choices.items():
-            logger.info(f"{key}. {desc}")
+            log_info(f"{key}. {desc}")
 
         while True:
             display_prompt = f"{prompt} (默认{default})"
@@ -46,7 +46,7 @@ class InputHandlers:
             
             # 处理帮助请求（支持中英文问号）
             if choice in ["?", "？"] and help_text:
-                logger.info(f"💡 {help_text}")
+                log_info(f"💡 {help_text}")
                 continue
             
             if not choice and default:
@@ -56,7 +56,7 @@ class InputHandlers:
                 return choice
             else:
                 valid_choices = ", ".join(choices.keys())
-                logger.error(f"❌ 请输入有效选项 ({valid_choices})")
+                log_error(f"❌ 请输入有效选项 ({valid_choices})")
 
     @staticmethod
     def get_text_input(prompt: str, default: str = None, required: bool = False, help_text: str = None) -> str:
@@ -71,14 +71,14 @@ class InputHandlers:
             
             # 处理帮助请求（支持中英文问号）
             if text in ["?", "？"] and help_text:
-                logger.info(f"💡 {help_text}")
+                log_info(f"💡 {help_text}")
                 continue
             
             if not text and default:
                 text = default
 
             if required and not text:
-                logger.error("❌ 此项不能为空")
+                log_error("❌ 此项不能为空")
                 continue
 
             return text
@@ -98,7 +98,7 @@ class InputHandlers:
             
             # 处理帮助请求（支持中英文问号）
             if value_str in ["?", "？"] and help_text:
-                logger.info(f"💡 {help_text}")
+                log_info(f"💡 {help_text}")
                 continue
             
             if not value_str and default is not None:
@@ -107,11 +107,11 @@ class InputHandlers:
             try:
                 value = int(value_str)
                 if min_value is not None and value < min_value:
-                    logger.error(f"❌ 请输入大于等于{min_value}的数字")
+                    log_error(f"❌ 请输入大于等于{min_value}的数字")
                     continue
                 return value
             except ValueError:
-                logger.error("❌ 请输入有效的数字")
+                log_error("❌ 请输入有效的数字")
 
     @staticmethod
     def get_list_input(prompt: str, separator: str = ",", help_text: str = None) -> list[str]:
@@ -123,7 +123,7 @@ class InputHandlers:
             
             # 处理帮助请求（支持中英文问号）
             if text in ["?", "？"] and help_text:
-                logger.info(f"💡 {help_text}")
+                log_info(f"💡 {help_text}")
                 continue
             
             if not text:
