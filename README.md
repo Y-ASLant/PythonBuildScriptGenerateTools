@@ -19,6 +19,7 @@
 - 🏢 **企业级选项** - 支持公司名称和版本信息
 - 🎯 **交互式菜单** - 支持上下键导航、空格选择的多选菜单
 - 🎨 **彩色界面** - 支持ANSI颜色显示，增强用户体验
+- 📦 **双工具Linux包生成** - 支持NFPM和FPM两种工具，生成 deb/rpm 安装包
 - ⏸️ **用户友好** - 程序结束前暂停，方便查看结果
 
 ## 安装要求
@@ -49,9 +50,9 @@ python main.py
 ```
 ========================================================================================================================
 
-                                              交互式 Python打包脚本生成器@ASLant
+                                      Python打包脚本生成器@ASLant
 
-                                            💡 在任何输入提示处输入 ? 可查看详细帮助
+                                      💡 在任何输入提示处输入 ? 可查看详细帮助
 
 ========================================================================================================================
 ```
@@ -98,6 +99,53 @@ uv run build.py
 python build.py
 ```
 
+### 6. 生成Linux安装包（可选）
+
+如果需要将可执行文件打包成 deb 或 rpm 安装包：
+
+```bash
+# 方法1：完整模式（推荐）- 一键完成编译和Linux包生成
+uv run main.py
+# 选择 "1. 完整模式" 并启用Linux包生成
+
+# 方法2：打包模式 - 仅为已有可执行文件生成Linux包
+uv run main.py  
+# 选择 "3. 打包模式"
+```
+
+**支持双打包工具**：
+- **NFPM**（推荐，默认）：跨平台支持Windows/macOS/Linux，高性能，Go编写，无依赖
+- **FPM**：功能全面，成熟稳定，Ruby编写，但在Windows上支持有限
+
+**安装打包工具**：
+
+**NFPM 安装**（推荐）：
+```bash
+# 跨平台 - 方法2：使用Go安装
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+# Linux/macOS - 方法1：使用安装脚本
+curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh
+
+# Windows - 方法3：使用Chocolatey
+choco install nfpm
+
+# 跨平台 - 方法4：下载预编译二进制文件
+# 访问 https://github.com/goreleaser/nfpm/releases
+# 下载对应平台的可执行文件（Windows: nfpm.exe）
+```
+
+**FPM 安装**：
+```bash
+# Ubuntu/Debian
+sudo apt-get install ruby ruby-dev rubygems build-essential
+sudo gem install --no-document fpm
+
+# CentOS/RHEL/Fedora
+sudo yum install ruby ruby-devel rubygems rpm-build
+sudo gem install --no-document fpm
+```
+
 ## 插件支持
 
 程序支持14种常用插件，分为三个类别：
@@ -127,13 +175,18 @@ python build.py
 运行程序的完整示例：
 
 1. 运行 `uv run main.py` 或 `python main.py`
-2. 查看帮助提示，了解可以使用 `?` 获取帮助
-3. 选择构建工具: `1` (Nuitka) 或 `2` (PyInstaller)
-4. 输入入口文件: `main.py`（如不确定可输入 `?` 查看帮助）
-5. 选择是否启用额外插件: `y`
-6. 使用交互式菜单选择插件（上下键导航，空格选择，回车确认）
-7. 按提示完成其他配置（任何不清楚的选项都可以输入 `?` 查看详细说明）
-8. 运行生成的 `uv run build.py` 或 `python build.py`
+2. 选择运行模式：
+   - `1` - 完整模式（编译 + Linux包生成，推荐）
+   - `2` - 编译模式（仅生成编译脚本）
+   - `3` - 打包模式（仅生成Linux包脚本）
+3. 查看帮助提示，了解可以使用 `?` 获取帮助
+4. 选择构建工具: `1` (Nuitka) 或 `2` (PyInstaller)
+5. 输入入口文件: `main.py`（如不确定可输入 `?` 查看帮助）
+6. 选择是否启用额外插件: `y`
+7. 使用交互式菜单选择插件（上下键导航，空格选择，回车确认）
+8. 按提示完成其他配置（任何不清楚的选项都可以输入 `?` 查看详细说明）
+9. 运行生成的 `uv run build.py` 或 `python build.py`
+10. （可选）如果选择了完整模式并启用Linux包生成，会自动生成 deb/rpm 安装包
 
 ## 生成的Python脚本示例
 
@@ -276,6 +329,41 @@ A: 追求性能选Nuitka，追求兼容性和快速打包选PyInstaller
 **Q: 帮助功能不工作**
 A: 确保输入的是英文问号 `?` 或中文问号 `？`，程序支持两种问号
 
+**Q: Linux包生成失败，提示FPM未安装**
+A: 需要先安装FPM工具，参考安装命令：Ubuntu/Debian系统安装ruby和gem，然后gem install fpm
+
+**Q: 生成的deb/rpm包无法安装**
+A: 检查包的依赖关系，确保目标系统满足运行时依赖；检查安装路径权限
+
+**Q: 如何自定义Linux包的安装路径**
+A: 在Linux包生成过程中会询问安装路径，默认为/usr/local/bin，可以修改为其他路径
+
+**Q: deb包安装时提示"missing final newline"错误**
+A: 这是包描述格式问题，运行 `python fix_linux_packages.py` 重新生成正确格式的包
+
+**Q: Windows可执行文件能在Linux上运行吗？**
+A: 不能直接运行。需要在Linux环境下重新编译，或者安装Wine来运行Windows程序
+
 ## 许可证
 
 MIT License
+
+Copyright (c) 2025 ASLant
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
