@@ -6,6 +6,7 @@ UI工具模块 - 处理横幅显示和摘要显示
 import sys
 import shutil
 from loguru import logger
+from .tool_analyzer import ToolRequirementAnalyzer
 
 
 class UIUtils:
@@ -109,4 +110,10 @@ class UIUtils:
             f"复制目录: {', '.join(config.copy_dirs) if config.copy_dirs else '无'}"
         )
         logger.info(f"脚本文件名: {config.script_filename}")
+        
+        # 显示工具需求
+        analyzer = ToolRequirementAnalyzer()
+        requirements_summary = analyzer.get_requirements_summary(config)
+        logger.info(f"工具需求: {requirements_summary}")
+        
         logger.info("=" * 60)

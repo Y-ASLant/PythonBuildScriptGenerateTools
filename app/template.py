@@ -3,58 +3,75 @@
 构建脚本模板 - 支持Nuitka和PyInstaller
 """
 
-BUILD_SCRIPT_TEMPLATE = '''# -*- coding: utf-8 -*-
-"""
-Nuitka构建脚本
-自动生成于 {entry_name} 项目
-"""
+from .template_common import (
+    COMMON_IMPORTS_AND_SETUP,
+    COMMON_LOG_FUNCTIONS,
+    COMMON_ENV_CHECK_FUNCTION,
+    COMMON_COPY_FILES_FUNCTION,
+    COMMON_MAIN_START,
+    COMMON_MAIN_END
+)
 
-import os
-import sys
-from pathlib import Path
-from shutil import copy, copytree, rmtree
-from datetime import datetime
-
-
-def log_message(level, message):
-    """输出日志信息"""
-    colors = {{'INFO': '\\033[94m', 'SUCCESS': '\\033[92m', 'ERROR': '\\033[91m', 'WARNING': '\\033[93m'}}
-    color = colors.get(level, '\\033[0m')
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"{{timestamp}} | {{color}}{{level:<7}}\\033[0m | {{message}}")
-
-def log_info(message): log_message('INFO', message)
-def log_success(message): log_message('SUCCESS', message)  
-def log_error(message): log_message('ERROR', message)
-def log_warning(message): log_message('WARNING', message)
-
-
+# Nuitka特定的工具检查函数
+NUITKA_TOOL_CHECK = '''
 def check_nuitka():
     """检查Nuitka是否已安装"""
-    try:
-        import nuitka
-        log_success("✅ Nuitka已安装")
-        return True
-    except ImportError:
-        log_error("❌ Nuitka未安装！")
-        log_info("📦 请运行: pip install nuitka")
-        return False
+    return check_tool_installed("Nuitka", "nuitka")
 
+def check_build_dependencies():
+    """检查构建依赖工具"""
+    log_info("🔍 检查构建相关工具...")
+    
+    # 检查编译器
+    compilers = ["clang", "gcc"]
+    compiler_found = False
+    for compiler in compilers:
+        if check_tool_installed(compiler, silent=True):
+            log_success(f"✅ {{compiler}} 编译器已安装")
+            compiler_found = True
+            break
+    
+    if not compiler_found:
+        log_warning("⚠️  未找到C编译器 (clang/gcc)")
+        log_info("💡 Linux: sudo apt install clang 或 sudo apt install gcc")
+        log_info("💡 macOS: xcode-select --install")
+    
+    # 检查Linux包生成工具（如果需要）
+    if "{linux_package_enabled}" == "True":
+        log_info("🔍 检查Linux包生成工具...")
+        
+        # 检查nfpm
+        if check_tool_installed("nfpm", silent=True):
+            log_success("✅ nfpm 已安装")
+        else:
+            log_warning("⚠️  nfpm 未安装")
+            log_info("💡 安装方法: https://nfpm.goreleaser.com/install/")
+        
+        # JSON模块检查（标准库，通常无需检查）
+        try:
+            import json
+            log_success("✅ JSON 支持已就绪（标准库）")
+        except ImportError:
+            log_error("❌ JSON模块不可用")
+        
+        # 检查包类型支持
+        package_types = {linux_package_types}
+        for pkg_type in package_types:
+            if pkg_type == "deb":
+                if check_tool_installed("dpkg-deb", silent=True):
+                    log_success("✅ DEB包支持已就绪")
+                else:
+                    log_warning("⚠️  dpkg-deb 未安装，DEB包生成可能失败")
+            elif pkg_type == "rpm":
+                if check_tool_installed("rpmbuild", silent=True):
+                    log_success("✅ RPM包支持已就绪")
+                else:
+                    log_warning("⚠️  rpmbuild 未安装，RPM包生成可能失败")
+    
+    return True'''
 
-def main():
-    """主构建函数"""
-    # 检查Nuitka依赖
-    log_info("🔍 检查构建工具依赖...")
-    if not check_nuitka():
-        sys.exit(1)
-    
-    # 记录开始时间
-    start_time = datetime.now()
-    
-    log_info("=" * 60)
-    log_info("🚀 Nuitka 构建脚本")
-    log_info("=" * 60)
-    log_info("入口文件: {entry_name}")
+# Nuitka特定的配置信息显示
+NUITKA_CONFIG_INFO = '''    log_info("入口文件: {entry_name}")
     log_info("输出目录: {output_dir}")
     log_info("编译器: {compiler}")
     log_info("显示控制台: {console_display}")
@@ -65,172 +82,70 @@ def main():
     args = [
     {args_str}
     ]
-    
-    log_info("开始Nuitka编译...")
-    log_info("执行命令: " + " ".join(args))
-    
-    # 执行Nuitka编译
-    result = os.system(" ".join(args))
-    
-    if result != 0:
-        log_error(f"❌ 编译失败！错误代码: {{result}}")
-        sys.exit(1)
-    
-    log_success("✅ Nuitka编译完成！")
-    
-    # 复制额外文件和目录
-    copy_additional_files()
-    
-    # 计算总耗时
-    end_time = datetime.now()
-    duration = end_time - start_time
-    total_seconds = int(duration.total_seconds())
-    minutes = total_seconds // 60
-    seconds = total_seconds % 60
-    
-    log_success("🎉 构建完成！")
-    log_info("输出位置: {output_dir}")
-    log_info(f"⏱️  总耗时: {{minutes}}分{{seconds}}秒")
-    
-    # Linux包生成（如果启用）
-    {linux_package_code}
-
-
-def copy_additional_files():
-    """复制额外的文件和目录到构建输出目录"""
-    from distutils.sysconfig import get_python_lib
-    
-    build_output_dir = Path("{output_dir}")
-    
-    if not build_output_dir.exists():
-        log_warning(f"⚠️  构建输出目录不存在: {{build_output_dir}}")
-        return
-    
-    log_info("📁 复制额外文件和目录...")
-    
-    # 需要复制的目录列表
-    copy_dirs = [
-{copy_dirs_str}
-    ]
-    
-    for dir_name in copy_dirs:
-        src_dir = Path(dir_name)
-        if src_dir.exists() and src_dir.is_dir():
-            dest_dir = build_output_dir / dir_name
-            
-            try:
-                if dest_dir.exists():
-                    rmtree(dest_dir)
-                
-                copytree(src_dir, dest_dir)
-                log_success(f"✅ 已复制目录: {{src_dir}} -> {{dest_dir}}")
-            except Exception as e:
-                log_error(f"❌ 复制目录 {{src_dir}} 失败: {{e}}")
-        else:
-            log_warning(f"⚠️  目录不存在，跳过: {{src_dir}}")
-    
-    # 复制site-packages（如果需要）
-    copied_site_packages = []  # 在这里添加需要复制的site-packages
-    
-    if copied_site_packages:
-        site_packages = Path(get_python_lib())
-        log_info("📦 复制site-packages...")
-        
-        for pkg_name in copied_site_packages:
-            src = site_packages / pkg_name
-            dest = build_output_dir / src.name
-            
-            log_info(f"复制site-packages {{src}} 到 {{dest}}")
-            
-            try:
-                if src.is_file():
-                    copy(src, dest)
-                else:
-                    copytree(src, dest)
-                log_success(f"✅ 已复制: {{src}}")
-            except (FileNotFoundError, PermissionError, OSError) as e:
-                log_error(f"❌ 复制 {{src}} 失败: {{e}}")
-    
-    # 复制标准库文件（如果需要）
-    copied_standard_packages = []  # 在这里添加需要复制的标准库文件
-    
-    if copied_standard_packages:
-        site_packages = Path(get_python_lib())
-        log_info("📚 复制标准库文件...")
-        
-        for file_name in copied_standard_packages:
-            src = site_packages.parent / file_name
-            dest = build_output_dir / src.name
-            
-            log_info(f"复制标准库 {{src}} 到 {{dest}}")
-            
-            try:
-                if src.is_file():
-                    copy(src, dest)
-                else:
-                    copytree(src, dest)
-                log_success(f"✅ 已复制: {{src}}")
-            except (FileNotFoundError, PermissionError, OSError) as e:
-                log_error(f"❌ 复制 {{src}} 失败: {{e}}")
-
-
-if __name__ == "__main__":
-    main()
 '''
 
+# 组装完整的Nuitka模板
+def _build_nuitka_template():
+    return (
+        COMMON_IMPORTS_AND_SETUP +
+        COMMON_LOG_FUNCTIONS +
+        COMMON_ENV_CHECK_FUNCTION +
+        NUITKA_TOOL_CHECK +
+        COMMON_COPY_FILES_FUNCTION +
+        COMMON_MAIN_START +
+        NUITKA_CONFIG_INFO +
+        COMMON_MAIN_END
+    )
 
-PYINSTALLER_BUILD_SCRIPT_TEMPLATE = '''# -*- coding: utf-8 -*-
-"""
-PyInstaller构建脚本
-自动生成于 {entry_name} 项目
-"""
-
-import os
-import sys
-from pathlib import Path
-from shutil import copy, copytree, rmtree
-from datetime import datetime
-
-
-def log_message(level, message):
-    """输出日志信息"""
-    colors = {{'INFO': '\\033[94m', 'SUCCESS': '\\033[92m', 'ERROR': '\\033[91m', 'WARNING': '\\033[93m'}}
-    color = colors.get(level, '\\033[0m')
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"{{timestamp}} | {{color}}{{level:<7}}\\033[0m | {{message}}")
-
-def log_info(message): log_message('INFO', message)
-def log_success(message): log_message('SUCCESS', message)  
-def log_error(message): log_message('ERROR', message)
-def log_warning(message): log_message('WARNING', message)
+BUILD_SCRIPT_TEMPLATE = _build_nuitka_template()
 
 
+# PyInstaller特定的工具检查函数
+PYINSTALLER_TOOL_CHECK = '''
 def check_pyinstaller():
     """检查PyInstaller是否已安装"""
-    try:
-        import PyInstaller
-        log_success("✅ PyInstaller已安装")
-        return True
-    except ImportError:
-        log_error("❌ PyInstaller未安装！")
-        log_info("📦 请运行: pip install pyinstaller")
-        return False
+    return check_tool_installed("PyInstaller", "PyInstaller")
 
+def check_build_dependencies():
+    """检查构建依赖工具"""
+    log_info("🔍 检查构建相关工具...")
+    
+    # 检查Linux包生成工具（如果需要）
+    if "{linux_package_enabled}" == "True":
+        log_info("🔍 检查Linux包生成工具...")
+        
+        # 检查nfpm
+        if check_tool_installed("nfpm", silent=True):
+            log_success("✅ nfpm 已安装")
+        else:
+            log_warning("⚠️  nfpm 未安装")
+            log_info("💡 安装方法: https://nfpm.goreleaser.com/install/")
+        
+        # JSON模块检查（标准库，通常无需检查）
+        try:
+            import json
+            log_success("✅ JSON 支持已就绪（标准库）")
+        except ImportError:
+            log_error("❌ JSON模块不可用（这不应该发生）")
+        
+        # 检查包类型支持
+        package_types = {linux_package_types}
+        for pkg_type in package_types:
+            if pkg_type == "deb":
+                if check_tool_installed("dpkg-deb", silent=True):
+                    log_success("✅ DEB包支持已就绪")
+                else:
+                    log_warning("⚠️  dpkg-deb 未安装，DEB包生成可能失败")
+            elif pkg_type == "rpm":
+                if check_tool_installed("rpmbuild", silent=True):
+                    log_success("✅ RPM包支持已就绪")
+                else:
+                    log_warning("⚠️  rpmbuild 未安装，RPM包生成可能失败")
+    
+    return True'''
 
-def main():
-    """主构建函数"""
-    # 检查PyInstaller依赖
-    log_info("🔍 检查构建工具依赖...")
-    if not check_pyinstaller():
-        sys.exit(1)
-    
-    # 记录开始时间
-    start_time = datetime.now()
-    
-    log_info("=" * 60)
-    log_info("🚀 PyInstaller 构建脚本")
-    log_info("=" * 60)
-    log_info("入口文件: {entry_name}")
+# PyInstaller特定的配置信息显示
+PYINSTALLER_CONFIG_INFO = '''    log_info("入口文件: {entry_name}")
     log_info("输出目录: {output_dir}")
     log_info("应用名称: {app_name}")
     log_info("单文件模式: {onefile}")
@@ -243,69 +158,19 @@ def main():
     args = [
     {args_str}
     ]
-    
-    log_info("开始PyInstaller编译...")
-    log_info("执行命令: " + " ".join(args))
-    
-    # 执行PyInstaller编译
-    result = os.system(" ".join(args))
-    
-    if result != 0:
-        log_error(f"❌ 编译失败！错误代码: {{result}}")
-        sys.exit(1)
-    
-    log_success("✅ PyInstaller编译完成！")
-    
-    # 复制额外文件和目录
-    copy_additional_files()
-    
-    # 计算总耗时
-    end_time = datetime.now()
-    duration = end_time - start_time
-    total_seconds = int(duration.total_seconds())
-    minutes = total_seconds // 60
-    seconds = total_seconds % 60
-    
-    log_success("🎉 构建完成！")
-    log_info("输出位置: {output_dir}")
-    log_info(f"⏱️  总耗时: {{minutes}}分{{seconds}}秒")
-    
-    # Linux包生成（如果启用）
-    {linux_package_code}
-
-
-def copy_additional_files():
-    """复制额外的文件和目录到构建输出目录"""
-    build_output_dir = Path("{output_dir}")
-    
-    if not build_output_dir.exists():
-        log_warning(f"⚠️  构建输出目录不存在: {{build_output_dir}}")
-        return
-    
-    log_info("📁 复制额外文件和目录...")
-    
-    # 需要复制的目录列表
-    copy_dirs = [
-{copy_dirs_str}
-    ]
-    
-    for dir_name in copy_dirs:
-        src_dir = Path(dir_name)
-        if src_dir.exists() and src_dir.is_dir():
-            dest_dir = build_output_dir / dir_name
-            
-            try:
-                if dest_dir.exists():
-                    rmtree(dest_dir)
-                
-                copytree(src_dir, dest_dir)
-                log_success(f"✅ 已复制目录: {{src_dir}} -> {{dest_dir}}")
-            except Exception as e:
-                log_error(f"❌ 复制目录 {{src_dir}} 失败: {{e}}")
-        else:
-            log_warning(f"⚠️  目录不存在，跳过: {{src_dir}}")
-
-
-if __name__ == "__main__":
-    main()
 '''
+
+# 组装完整的PyInstaller模板
+def _build_pyinstaller_template():
+    return (
+        COMMON_IMPORTS_AND_SETUP +
+        COMMON_LOG_FUNCTIONS +
+        COMMON_ENV_CHECK_FUNCTION +
+        PYINSTALLER_TOOL_CHECK +
+        COMMON_COPY_FILES_FUNCTION +
+        COMMON_MAIN_START +
+        PYINSTALLER_CONFIG_INFO +
+        COMMON_MAIN_END
+    )
+
+PYINSTALLER_BUILD_SCRIPT_TEMPLATE = _build_pyinstaller_template()

@@ -8,10 +8,15 @@ from pathlib import Path
 from typing import List
 from .template import BUILD_SCRIPT_TEMPLATE, PYINSTALLER_BUILD_SCRIPT_TEMPLATE
 from .version_info_template import VERSION_INFO_TEMPLATE
+from .tool_analyzer import ToolRequirementAnalyzer
+from .common_utils import ConfigHelper, PathHelper
 
 
 class ScriptGenerator:
     """脚本生成器 - 负责生成Nuitka和PyInstaller参数和Python构建脚本"""
+    
+    def __init__(self):
+        self.tool_analyzer = ToolRequirementAnalyzer()
 
     def generate_nuitka_args(self, config) -> List[str]:
         """生成Nuitka编译参数列表"""
@@ -120,8 +125,8 @@ class ScriptGenerator:
 
         # 输出目录和工作目录
         if config.output_dir:
-            args.append("--distpath=dist")
-            args.append(f"--workpath={config.output_dir}")
+            args.append(f"--distpath={config.output_dir}")
+            args.append(f"--workpath={config.output_dir}_temp")
 
         # 应用名称
         if config.app_name:
@@ -183,25 +188,35 @@ class ScriptGenerator:
 
     def generate_python_script(self, args: List[str], config) -> str:
         """生成Python构建脚本"""
-        # 格式化参数列表
-        args_list = [f'    "{arg}",' for arg in args]
-        args_str = "".join(args_list)
-
-        # 格式化复制目录列表
-        copy_dirs_str = ""
-        if config.copy_dirs:
-            dirs_list = [f'    "{d}",' for d in config.copy_dirs]
-            copy_dirs_str = "".join(dirs_list)
+        # 使用通用工具格式化参数
+        args_str = self._format_args_for_template(args)
+        copy_dirs_str = self._format_copy_dirs_for_template(config.copy_dirs)
 
         # 生成Linux包生成代码
         linux_package_code = self._generate_linux_package_code(config)
 
+        # 生成工具需求代码
+        required_tools_code = self.tool_analyzer.generate_requirements_code(config)
+
         entry_name = Path(config.entry_file).name
 
-        # 根据构建工具选择模板
+        # 根据构建工具选择模板并格式化
         if config.build_tool == "nuitka":
             template = BUILD_SCRIPT_TEMPLATE
+            # 先替换工具特定的占位符
+            template = template.replace("{{tool_name}}", "Nuitka")
+            template = template.replace("{{tool_name_lower}}", "nuitka")
+            
+            # 替换Linux包相关占位符
+            template = template.replace("{linux_package_enabled}", str(getattr(config, 'generate_linux_packages', False)))
+            template = template.replace("{linux_package_types}", str(getattr(config, 'linux_package_types', [])))
+            
+            # 替换Linux包生成代码中的占位符
+            linux_package_code = linux_package_code.replace("{config.output_dir}", config.output_dir)
+            linux_package_code = linux_package_code.replace("{config.app_name}", config.app_name)
+            
             script_content = template.format(
+                script_type="Nuitka",
                 entry_name=entry_name,
                 output_dir=config.output_dir,
                 compiler=config.compiler,
@@ -210,10 +225,24 @@ class ScriptGenerator:
                 args_str=args_str,
                 copy_dirs_str=copy_dirs_str,
                 linux_package_code=linux_package_code,
+                required_tools_code=required_tools_code,
             )
         elif config.build_tool == "pyinstaller":
             template = PYINSTALLER_BUILD_SCRIPT_TEMPLATE
+            # 先替换工具特定的占位符
+            template = template.replace("{{tool_name}}", "PyInstaller")
+            template = template.replace("{{tool_name_lower}}", "pyinstaller")
+            
+            # 替换Linux包相关占位符
+            template = template.replace("{linux_package_enabled}", str(getattr(config, 'generate_linux_packages', False)))
+            template = template.replace("{linux_package_types}", str(getattr(config, 'linux_package_types', [])))
+            
+            # 替换Linux包生成代码中的占位符
+            linux_package_code = linux_package_code.replace("{config.output_dir}", config.output_dir)
+            linux_package_code = linux_package_code.replace("{config.app_name}", config.app_name)
+            
             script_content = template.format(
+                script_type="PyInstaller",
                 entry_name=entry_name,
                 output_dir=config.output_dir,
                 onefile="是" if config.onefile else "否",
@@ -224,114 +253,141 @@ class ScriptGenerator:
                 args_str=args_str,
                 copy_dirs_str=copy_dirs_str,
                 linux_package_code=linux_package_code,
+                required_tools_code=required_tools_code,
             )
         else:
             raise ValueError(f"不支持的构建工具: {config.build_tool}")
 
         return script_content
 
-    def _generate_linux_package_code(self, config) -> str:
-        """生成Linux包生成代码（使用新的包生成器）"""
-        if not config.generate_linux_packages:
+    def _format_args_for_template(self, args: List[str]) -> str:
+        """格式化参数列表为模板字符串"""
+        args_list = [f'    "{arg}",' for arg in args]
+        return "".join(args_list)
+
+    def _format_copy_dirs_for_template(self, copy_dirs: List[str]) -> str:
+        """格式化复制目录列表为模板字符串"""
+        if not copy_dirs:
             return ""
+        dirs_list = [f'    "{d}",' for d in copy_dirs]
+        return "".join(dirs_list)
+
+    def _generate_linux_package_code(self, config) -> str:
+        """生成Linux包生成代码（完全独立实现）"""
+        if not getattr(config, 'generate_linux_packages', False):
+            return "    # Linux包生成已禁用"
         
-        # 生成包类型列表
+        # 格式化包类型列表
         package_types_str = ", ".join([f'"{pkg}"' for pkg in config.linux_package_types])
         depends_str = ", ".join([f'"{dep}"' for dep in getattr(config, 'package_depends', [])])
         
-        # 生成使用新包生成器的代码
+        # 生成完全独立的Linux包生成代码
         code = f'''
     # 生成Linux安装包
-    generate_linux_packages_new("{config.linux_packaging_tool}", [{package_types_str}], 
-                                "{getattr(config, 'package_architecture', 'amd64')}",
-                                "{getattr(config, 'package_install_path', '/usr/local/bin')}",
-                                [{depends_str}],
-                                "{getattr(config, 'package_desktop_name', '')}",
-                                {getattr(config, 'package_create_service', False)},
-                                "{getattr(config, 'package_service_name', '')}",
-                                "{getattr(config, 'package_output_dir', 'output_pkg')}")
+    generate_linux_packages_standalone([{package_types_str}], 
+                                     "{getattr(config, 'package_architecture', 'amd64')}",
+                                     "{getattr(config, 'package_install_path', '/usr/local/bin')}",
+                                     [{depends_str}],
+                                     "{getattr(config, 'package_desktop_name', '')}",
+                                     {getattr(config, 'package_create_service', False)},
+                                     "{getattr(config, 'package_service_name', '')}",
+                                     "{getattr(config, 'package_output_dir', 'output_pkg')}")
 
 
-def generate_linux_packages_new(tool, package_types, architecture, install_path, depends, desktop_name, create_service, service_name, output_dir):
-    """使用新的包生成器生成Linux安装包"""
-    import sys
-    import os
-    from pathlib import Path
+def generate_linux_packages_standalone(package_types, architecture, install_path, depends, desktop_name, create_service, service_name, output_dir):
+    """独立的Linux包生成函数"""
+    import subprocess
+    import json
+    import tempfile
     
-    # 添加app目录到Python路径
-    sys.path.insert(0, str(Path(__file__).parent / "app"))
+    log_info("📦 开始生成Linux安装包...")
+    
+    # 查找可执行文件（只在输出目录中查找）
+    build_dirs = ["{config.output_dir}"]
+    exe_file = find_executable_in_dirs(build_dirs)
+    
+    if not exe_file:
+        log_error("❌ 未找到可执行文件")
+        return False
+    
+    log_info(f"📁 找到可执行文件: {{exe_file}}")
+    
+    # 检查nfpm是否可用
+    if not shutil.which("nfpm"):
+        log_error("❌ 未找到nfpm工具")
+        log_info("💡 请安装nfpm: https://nfpm.goreleaser.com/install/")
+        return False
     
     try:
-        from app.package_generators import LinuxPackageGenerator
+        # 创建输出目录
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
         
-        log_info("📦 使用新的包生成器开始打包...")
+        app_name = "{config.app_name}"
         
-        # 查找可执行文件
-        build_dirs = ["build", "dist"]
-        exe_file = None
+        # 生成nfpm配置
+        nfpm_config = {{
+            "name": app_name,
+            "arch": architecture,
+            "platform": "linux",
+            "version": "1.0.0",
+            "section": "default",
+            "priority": "extra",
+            "maintainer": "ASLant <unknown@example.com>",
+            "description": f"{{app_name}} application",
+            "homepage": "",
+            "license": "MIT",
+            "contents": [
+                {{
+                    "src": exe_file,
+                    "dst": f"{{install_path}}/{{app_name}}",
+                    "file_info": {{
+                        "mode": 0o755
+                    }}
+                }}
+            ]
+        }}
         
-        for build_dir in build_dirs:
-            build_path = Path(build_dir)
-            if build_path.exists():
-                for file_path in build_path.rglob("*"):
-                    if file_path.is_file() and file_path.suffix not in ['.spec', '.txt', '.log', '.exe']:
-                        if os.access(file_path, os.X_OK) or file_path.suffix == '':
-                            exe_file = str(file_path)
-                            break
-                if exe_file:
-                    break
+        # 添加依赖
+        if depends:
+            nfpm_config["depends"] = depends
         
-        if not exe_file:
-            log_error("❌ 未找到可执行文件")
-            return False
-        
-        log_info(f"📁 找到可执行文件: {{exe_file}}")
-        
-        # 创建包生成器并设置预配置参数
-        generator = LinuxPackageGenerator()
-        generator.app_name = "{config.app_name}"
-        generator.version = "{config.file_version}"
-        generator.description = "{getattr(config, 'description', config.app_name + ' application')}"
-        generator.maintainer = "{getattr(config, 'company_name', 'Unknown')} <unknown@example.com>"
-        generator.url = "{getattr(config, 'url', '')}"
-        generator.license = "MIT"
-        generator.executable_path = exe_file
-        generator.install_path = install_path
-        generator.packaging_tool = tool
-        generator.package_types = package_types
-        generator.architecture = architecture
-        generator.depends = depends
-        generator.desktop_file = desktop_name
-        generator.create_service = create_service
-        generator.service_name = service_name
-        generator.output_dir = output_dir
-        
-        log_info(f"📝 应用名称: {{generator.app_name}}")
-        log_info(f"💻 目标架构: {{generator.architecture}}")
-        log_info(f"📁 安装路径: {{generator.install_path}}")
-        log_info(f"📦 包类型: {{', '.join(generator.package_types)}}")
-        log_info(f"📂 输出目录: {{generator.output_dir}}")
-        
-        # 生成包
-        success = generator.generate_packages()
-        
-        if success:
-            log_success("🎉 Linux包生成完成！")
-            log_info(f"📦 包文件已保存在: {{generator.output_dir}}/")
-        else:
-            log_error("❌ Linux包生成失败")
+        # 为每种包类型生成包
+        for pkg_type in package_types:
+            log_info(f"🔨 生成{{pkg_type.upper()}}包...")
             
-        return success
+            # 创建临时配置文件（使用JSON格式，无需额外依赖）
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                import json
+                json.dump(nfpm_config, f, indent=2)
+                config_file = f.name
+            
+            try:
+                # 生成包
+                output_file = output_path / f"{{app_name}}_1.0.0_{{architecture}}.{{pkg_type}}"
+                cmd = ["nfpm", "package", "--packager", pkg_type, "--config", config_file, "--target", str(output_file)]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    log_success(f"✅ {{pkg_type.upper()}}包生成成功: {{output_file}}")
+                else:
+                    log_error(f"❌ {{pkg_type.upper()}}包生成失败: {{result.stderr}}")
+                    
+            finally:
+                # 清理临时文件
+                Path(config_file).unlink(missing_ok=True)
         
-    except ImportError as e:
-        log_error(f"❌ 无法导入包生成器: {{e}}")
-        log_info("📝 请确保 app/package_generators.py 文件存在")
+        log_success("✅ Linux包生成完成！")
+        return True
+        
+    except ImportError:
+        log_error("❌ 缺少json模块（这不应该发生，json是Python标准库）")
         return False
     except Exception as e:
         log_error(f"❌ 生成Linux包时发生错误: {{e}}")
         return False
 '''
-        
         return code
 
     def generate_version_info_file(self, config) -> str:
