@@ -25,6 +25,14 @@ class LinuxPackageGenerator:
         self.package_types = []
         self.packaging_tool = "nfpm"  # 默认使用NFPM
         self.nfpm_path = "nfpm"  # NFPM可执行文件路径
+        
+        # 实用的扩展配置
+        self.architecture = "amd64"  # 架构选择
+        self.depends = []  # 依赖包列表
+        self.desktop_file = ""  # 桌面文件
+        self.create_service = False  # 是否创建系统服务
+        self.service_name = ""  # 服务名称
+        self.output_dir = "output_pkg"  # 输出目录
 
     def collect_package_info(self, executable_path: str):
         """收集打包信息"""
@@ -88,6 +96,9 @@ class LinuxPackageGenerator:
 
         # 包类型选择
         self._select_package_types()
+        
+        # 扩展配置选项
+        self._collect_extended_config()
 
     def _select_packaging_tool(self):
         """选择打包工具"""
@@ -258,6 +269,9 @@ class LinuxPackageGenerator:
         if not self._validate_executable():
             return False
 
+        # 创建输出目录
+        self._create_output_directory()
+
         success = True
 
         if self.packaging_tool == "nfpm":
@@ -325,24 +339,24 @@ class LinuxPackageGenerator:
         return success
 
     def _cleanup_existing_packages(self, package_type: str):
-        """清理已存在的包文件"""
+        """清理输出目录中已存在的包文件"""
         if package_type == "deb":
-            # DEB包会被自动转换为小写名称
-            lowercase_name = self.app_name.lower()
-            pattern = f"{lowercase_name}*.deb"
+            pattern = "*.deb"
         elif package_type == "rpm":
-            pattern = f"{self.app_name}*.rpm"
+            pattern = "*.rpm"
         else:
             return
 
-        # 查找并删除已存在的包文件
-        existing_files = list(Path(".").glob(pattern))
-        for file_path in existing_files:
-            try:
-                file_path.unlink()
-                log_info(f"🗑️  删除已存在的包文件: {file_path}")
-            except Exception as e:
-                log_warning(f"⚠️  无法删除文件 {file_path}: {e}")
+        # 查找并删除输出目录中已存在的包文件
+        output_path = Path(self.output_dir)
+        if output_path.exists():
+            existing_files = list(output_path.glob(pattern))
+            for file_path in existing_files:
+                try:
+                    file_path.unlink()
+                    log_info(f"🗑️  删除已存在的包文件: {file_path}")
+                except Exception as e:
+                    log_warning(f"⚠️  无法删除文件 {file_path}: {e}")
 
     def _create_nfpm_config(self):
         """创建NFPM配置文件"""
@@ -351,8 +365,9 @@ class LinuxPackageGenerator:
         # 将Windows路径转换为Unix格式
         unix_path = str(Path(self.executable_path)).replace("\\", "/")
 
+        # 构建基本配置
         config_content = f"""name: {self.app_name}
-arch: amd64
+arch: {self.architecture}
 platform: linux
 version: {self.version}
 section: utils
@@ -368,6 +383,66 @@ contents:
     dst: {self.install_path}/{self.app_name}
     file_info:
       mode: 0755
+"""
+        
+        # 添加桌面文件
+        if self.desktop_file:
+            desktop_content = f"""[Desktop Entry]
+Version=1.0
+Type=Application
+Name={self.desktop_file}
+Exec={self.install_path}/{self.app_name}
+Icon={self.app_name}
+Terminal=false
+Categories=Utility;
+"""
+            config_content += f"""
+  - dst: /usr/share/applications/{self.app_name}.desktop
+    type: config
+    file_info:
+      mode: 0644
+    content: |
+""" + "\n".join([f"      {line}" for line in desktop_content.split("\n") if line])
+        
+        # 添加systemd服务
+        if self.create_service:
+            service_content = f"""[Unit]
+Description={self.description or self.app_name}
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={self.install_path}/{self.app_name}
+Restart=always
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
+"""
+            config_content += f"""
+  - dst: /etc/systemd/system/{self.service_name}.service
+    type: config
+    file_info:
+      mode: 0644
+    content: |
+""" + "\n".join([f"      {line}" for line in service_content.split("\n") if line])
+        
+        # 添加依赖配置
+        if self.depends:
+            config_content += f"""
+
+overrides:
+  deb:
+    depends:"""
+            for dep in self.depends:
+                config_content += f"\n      - {dep}"
+            config_content += f"""
+  rpm:
+    depends:"""
+            for dep in self.depends:
+                config_content += f"\n      - {dep}"
+        else:
+            config_content += f"""
 
 overrides:
   deb:
@@ -389,6 +464,16 @@ overrides:
         # 清理已存在的包文件
         self._cleanup_existing_packages(package_type)
 
+        # 生成包文件名
+        if package_type == "deb":
+            package_filename = f"{self.app_name}_{self.version}_{self.architecture}.deb"
+        elif package_type == "rpm":
+            package_filename = f"{self.app_name}-{self.version}-1.{self.architecture}.rpm"
+        else:
+            package_filename = f"{self.app_name}.{package_type}"
+        
+        output_path = Path(self.output_dir) / package_filename
+
         cmd = [
             self.nfpm_path,
             "package",
@@ -396,6 +481,8 @@ overrides:
             package_type,
             "--config",
             config_file,
+            "--target",
+            str(output_path),
         ]
 
         log_info(f"🔧 生成{package_type.upper()}包...")
@@ -408,10 +495,11 @@ overrides:
             if result.stdout:
                 log_info(result.stdout)
 
-            # 查找生成的包文件
-            package_files = list(Path(".").glob(f"{self.app_name}*.{package_type}"))
-            for package_file in package_files:
-                log_success(f"📦 生成的包: {package_file}")
+            # 检查生成的包文件
+            if output_path.exists():
+                log_success(f"📦 包文件已生成: {output_path}")
+            else:
+                log_warning(f"⚠️  未找到生成的包文件: {output_path}")
         else:
             error_msg = f"NFPM命令执行失败 (返回码: {result.returncode})"
             if result.stderr:
@@ -427,6 +515,16 @@ overrides:
 
         # 将Windows路径转换为Unix格式
         unix_path = str(Path(self.executable_path)).replace("\\", "/")
+
+        # 生成包文件名
+        if package_type == "deb":
+            package_filename = f"{self.app_name}_{self.version}_{self.architecture}.deb"
+        elif package_type == "rpm":
+            package_filename = f"{self.app_name}-{self.version}-1.{self.architecture}.rpm"
+        else:
+            package_filename = f"{self.app_name}.{package_type}"
+        
+        output_path = Path(self.output_dir) / package_filename
 
         # 构建精简的FPM命令
         cmd = [
@@ -446,6 +544,8 @@ overrides:
             "--license",
             self.license,
             "--force",
+            "-p",
+            str(output_path),
             f"{unix_path}={self.install_path}/{self.app_name}",
         ]
 
@@ -469,15 +569,11 @@ overrides:
             if result.stdout:
                 log_info(result.stdout)
 
-            # 查找生成的包文件
-            package_files = []
-            if package_type == "deb":
-                package_files = list(Path(".").glob(f"{self.app_name}*.deb"))
-            elif package_type == "rpm":
-                package_files = list(Path(".").glob(f"{self.app_name}*.rpm"))
-
-            for package_file in package_files:
-                log_success(f"📦 生成的包: {package_file}")
+            # 检查生成的包文件
+            if output_path.exists():
+                log_success(f"📦 包文件已生成: {output_path}")
+            else:
+                log_warning(f"⚠️  未找到生成的包文件: {output_path}")
         else:
             error_msg = f"FPM命令执行失败 (返回码: {result.returncode})"
             if result.stderr:
@@ -485,6 +581,92 @@ overrides:
             if result.stdout:
                 error_msg += f"\n标准输出: {result.stdout}"
             raise Exception(error_msg)
+
+    def _collect_extended_config(self):
+        """收集扩展配置（简化版）"""
+        log_info("🔧 扩展配置选项")
+        
+        # 架构选择
+        arch_choice = InputHandlers.get_choice_input(
+            "💻 请选择目标架构",
+            {
+                "1": "amd64 (64位 Intel/AMD)",
+                "2": "arm64 (64位 ARM)",
+                "3": "all (架构无关)"
+            },
+            "1",
+            help_text="选择包的目标架构。amd64适用于大多数桌面和服务器；arm64适用于ARM处理器；all适用于纯脚本程序"
+        )
+        
+        arch_map = {"1": "amd64", "2": "arm64", "3": "all"}
+        self.architecture = arch_map[arch_choice]
+        log_success(f"✅ 目标架构: {self.architecture}")
+        
+        # 输出目录设置
+        self.output_dir = InputHandlers.get_text_input(
+            "📁 请输入输出目录",
+            default="output_pkg",
+            help_text="请输入生成的RPM/DEB包文件的输出目录名称"
+        )
+        log_success(f"✅ 输出目录: {self.output_dir}")
+        
+        # 依赖包设置
+        add_depends = InputHandlers.get_yes_no_input(
+            "📦 是否添加运行时依赖包?",
+            "n",
+            help_text="添加程序运行所需的系统包依赖。例如：python3, libssl1.1等"
+        )
+        
+        if add_depends:
+            log_info("请输入依赖包名称，多个包用逗号分隔")
+            log_info("例如: python3,libssl1.1,libc6")
+            self.depends = InputHandlers.get_list_input(
+                "依赖包",
+                help_text="请输入程序运行所需的系统包，多个包用逗号分隔"
+            )
+            if self.depends:
+                log_success(f"✅ 依赖包: {', '.join(self.depends)}")
+        
+        # 桌面文件
+        add_desktop = InputHandlers.get_yes_no_input(
+            "🖥️ 是否创建桌面快捷方式?",
+            "n",
+            help_text="为GUI应用创建桌面快捷方式，会在应用程序菜单中显示"
+        )
+        
+        if add_desktop:
+            self.desktop_file = InputHandlers.get_text_input(
+                "请输入应用显示名称",
+                default=self.app_name.title(),
+                help_text="在桌面和应用程序菜单中显示的名称"
+            )
+            log_success(f"✅ 将创建桌面快捷方式: {self.desktop_file}")
+        
+        # 系统服务
+        add_service = InputHandlers.get_yes_no_input(
+            "⚙️ 是否创建系统服务?",
+            "n",
+            help_text="为后台服务程序创建systemd服务，可以开机自启动"
+        )
+        
+        if add_service:
+            self.create_service = True
+            self.service_name = InputHandlers.get_text_input(
+                "请输入服务名称",
+                default=self.app_name,
+                help_text="systemd服务的名称，建议使用应用名称"
+            )
+            log_success(f"✅ 将创建系统服务: {self.service_name}")
+    
+    def _create_output_directory(self):
+        """创建输出目录"""
+        output_path = Path(self.output_dir)
+        if not output_path.exists():
+            output_path.mkdir(parents=True, exist_ok=True)
+            log_info(f"📁 创建输出目录: {self.output_dir}")
+        else:
+            log_info(f"📁 使用输出目录: {self.output_dir}")
+    
 
 
 def create_linux_packages(executable_path: str):
@@ -498,12 +680,12 @@ def create_linux_packages(executable_path: str):
         # 生成包
         if generator.generate_packages():
             log_success("🎉 Linux包生成完成！")
-            log_info("📦 生成的文件:")
+            log_info(f"📦 生成的文件保存在: {generator.output_dir}/")
             log_info("- *.deb 或 *.rpm 包文件")
             log_info("💡 安装方法:")
-            log_info("- DEB包: sudo apt install -fy ./包文件名.deb")
+            log_info(f"- DEB包: sudo apt install -fy ./{generator.output_dir}/包文件名.deb")
             log_info(
-                "- RPM包: sudo rpm -i 包文件名.rpm 或 sudo dnf install 包文件名.rpm"
+                f"- RPM包: sudo rpm -i ./{generator.output_dir}/包文件名.rpm 或 sudo dnf install ./{generator.output_dir}/包文件名.rpm"
             )
             return True
         else:

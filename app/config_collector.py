@@ -49,6 +49,15 @@ class ConfigCollector:
         self.generate_linux_packages: bool = False  # 是否生成Linux包
         self.linux_packaging_tool: str = "nfpm"  # nfpm 或 fpm
         self.linux_package_types: list = ["deb"]  # 包类型
+        
+        # 扩展打包配置
+        self.package_architecture: str = "amd64"  # 目标架构
+        self.package_install_path: str = "/usr/local/bin"  # 安装路径
+        self.package_depends: list = []  # 依赖包
+        self.package_desktop_name: str = ""  # 桌面显示名称
+        self.package_create_service: bool = False  # 是否创建服务
+        self.package_service_name: str = ""  # 服务名称
+        self.package_output_dir: str = "output_pkg"  # 输出目录
 
     def get_project_dir(self):
         """获取项目根目录"""
@@ -619,8 +628,10 @@ class ConfigCollector:
         if mode in ["full", "package"]:
             # Linux包生成配置
             if mode == "package":
-                # 打包模式下，只需要基本信息
+                # 打包模式下，需要基本信息和脚本名称
                 self.get_app_name_for_package()
+                self.script_filename = "create_packages.py"  # 打包模式默认脚本名
+                self.get_script_filename()  # 添加脚本名称设置
             self.get_linux_package_settings(mode == "package")
 
     def get_linux_package_settings(self, force_enable=False):
@@ -671,6 +682,9 @@ class ConfigCollector:
 
             if not self.linux_package_types:
                 self.linux_package_types = ["deb"]  # 默认生成DEB包
+            
+            # 扩展配置选项
+            self._collect_extended_package_config()
 
     def get_app_name_for_package(self):
         """获取打包用的应用名称"""
@@ -680,3 +694,103 @@ class ConfigCollector:
             help_text="请输入要打包的应用程序名称，这将作为包名。建议使用小写字母和连字符",
         )
         log_success(f"✅ 应用名称: {self.app_name}")
+    
+    def _collect_extended_package_config(self):
+        """收集扩展打包配置（简化版）"""
+        log_info("🔧 扩展配置选项")
+        
+        # 架构选择
+        arch_choice = InputHandlers.get_choice_input(
+            "💻 请选择目标架构",
+            {
+                "1": "amd64 (64位 Intel/AMD)",
+                "2": "arm64 (64位 ARM)",
+                "3": "all (架构无关)"
+            },
+            "1",
+            help_text="选择包的目标架构。amd64适用于大多数桌面和服务器；arm64适用于ARM处理器；all适用于纯脚本程序"
+        )
+        
+        arch_map = {"1": "amd64", "2": "arm64", "3": "all"}
+        self.package_architecture = arch_map[arch_choice]
+        log_success(f"✅ 目标架构: {self.package_architecture}")
+        
+        # 输出目录设置
+        self.package_output_dir = InputHandlers.get_text_input(
+            "📁 请输入输出目录",
+            default="output_pkg",
+            help_text="请输入生成的RPM/DEB包文件的输出目录名称"
+        )
+        log_success(f"✅ 输出目录: {self.package_output_dir}")
+        
+        # 安装路径自定义
+        custom_path = InputHandlers.get_yes_no_input(
+            "📁 是否自定义安装路径?",
+            "n",
+            help_text="默认安装到 /usr/local/bin，您可以选择自定义路径"
+        )
+        
+        if custom_path:
+            self.package_install_path = InputHandlers.get_text_input(
+                "请输入安装路径",
+                default="/usr/local/bin",
+                help_text="请输入可执行文件的安装路径"
+            )
+        else:
+            self.package_install_path = "/usr/local/bin"
+        log_success(f"✅ 安装路径: {self.package_install_path}")
+        
+        # 依赖包设置
+        add_depends = InputHandlers.get_yes_no_input(
+            "📦 是否添加运行时依赖包?",
+            "n",
+            help_text="添加程序运行所需的系统包依赖。例如：python3, libssl1.1等"
+        )
+        
+        if add_depends:
+            log_info("请输入依赖包名称，多个包用逗号分隔")
+            log_info("例如: python3,libssl1.1,libc6")
+            self.package_depends = InputHandlers.get_list_input(
+                "依赖包",
+                help_text="请输入程序运行所需的系统包，多个包用逗号分隔"
+            )
+            if self.package_depends:
+                log_success(f"✅ 依赖包: {', '.join(self.package_depends)}")
+        else:
+            self.package_depends = []
+        
+        # 桌面文件
+        add_desktop = InputHandlers.get_yes_no_input(
+            "🖥️ 是否创建桌面快捷方式?",
+            "n",
+            help_text="为GUI应用创建桌面快捷方式，会在应用程序菜单中显示"
+        )
+        
+        if add_desktop:
+            self.package_desktop_name = InputHandlers.get_text_input(
+                "请输入应用显示名称",
+                default=self.app_name.title(),
+                help_text="在桌面和应用程序菜单中显示的名称"
+            )
+            log_success(f"✅ 将创建桌面快捷方式: {self.package_desktop_name}")
+        else:
+            self.package_desktop_name = ""
+        
+        # 系统服务
+        add_service = InputHandlers.get_yes_no_input(
+            "⚙️ 是否创建系统服务?",
+            "n",
+            help_text="为后台服务程序创建systemd服务，可以开机自启动"
+        )
+        
+        if add_service:
+            self.package_create_service = True
+            self.package_service_name = InputHandlers.get_text_input(
+                "请输入服务名称",
+                default=self.app_name,
+                help_text="systemd服务的名称，建议使用应用名称"
+            )
+            log_success(f"✅ 将创建系统服务: {self.package_service_name}")
+        else:
+            self.package_create_service = False
+            self.package_service_name = ""

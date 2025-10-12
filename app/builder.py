@@ -115,13 +115,17 @@ class NuitkaScriptBuilder:
     def _generate_package_script(self):
         """生成Linux包生成脚本"""
         logger.info("💾 生成Linux包生成脚本...")
-
-        # 创建独立的Linux包生成脚本
-        package_script_content = '''#!/usr/bin/env python3
+        
+        # 获取配置参数
+        config = self.config_collector
+        
+        # 创建使用预配置参数的Linux包生成脚本
+        package_script_content = f'''
 # -*- coding: utf-8 -*-
 """
 Linux包生成脚本
 自动生成的独立打包脚本
+使用预配置参数，无需重新输入
 """
 
 import sys
@@ -131,13 +135,13 @@ from pathlib import Path
 # 添加app目录到Python路径
 sys.path.insert(0, str(Path(__file__).parent / "app"))
 
-from app.package_generators import create_linux_packages
+from app.package_generators import LinuxPackageGenerator
 from app.logger_utils import log_info, log_success, log_error
 
 def main():
     """主函数"""
     try:
-        log_info(" Linux包生成脚本")
+        log_info("📦 Linux包生成脚本")
         log_info("=" * 60)
         
         # 查找可执行文件
@@ -156,27 +160,58 @@ def main():
                     break
         
         if not exe_file:
-            log_error(" 未找到可执行文件")
-            log_info(" 请确保在 build/ 或 dist/ 目录中有可执行文件")
+            log_error("❌ 未找到可执行文件")
+            log_info("📝 请确保在 build/ 或 dist/ 目录中有可执行文件")
             return False
         
-        log_info(f" 找到可执行文件: {{exe_file}}")
+        log_info(f"📁 找到可执行文件: {{exe_file}}")
         
-        # 生成Linux包
-        success = create_linux_packages(exe_file)
+        # 使用预配置参数创建生成器
+        generator = LinuxPackageGenerator()
+        
+        # 设置预配置参数
+        generator.app_name = "{config.app_name}"
+        generator.version = "{config.file_version}"
+        generator.description = "{getattr(config, 'description', config.app_name + ' application')}"
+        generator.maintainer = "{getattr(config, 'company_name', 'Unknown')} <unknown@example.com>"
+        generator.url = "{getattr(config, 'url', '')}"
+        generator.license = "MIT"
+        generator.executable_path = exe_file
+        generator.install_path = "{getattr(config, 'package_install_path', '/usr/local/bin')}"
+        generator.packaging_tool = "{config.linux_packaging_tool}"
+        generator.package_types = {config.linux_package_types}
+        
+        # 设置扩展参数
+        generator.architecture = "{getattr(config, 'package_architecture', 'amd64')}"
+        generator.depends = {getattr(config, 'package_depends', [])}
+        generator.desktop_file = "{getattr(config, 'package_desktop_name', '')}"
+        generator.create_service = {getattr(config, 'package_create_service', False)}
+        generator.service_name = "{getattr(config, 'package_service_name', '')}"
+        generator.output_dir = "{getattr(config, 'package_output_dir', 'output_pkg')}"
+        
+        log_info("🚀 使用预配置参数开始打包...")
+        log_info(f"📝 应用名称: {{generator.app_name}}")
+        log_info(f"💻 目标架构: {{generator.architecture}}")
+        log_info(f"📁 安装路径: {{generator.install_path}}")
+        log_info(f"📦 包类型: {{', '.join(generator.package_types)}}")
+        log_info(f"📂 输出目录: {{generator.output_dir}}")
+        
+        # 生成包
+        success = generator.generate_packages()
         
         if success:
-            log_success(" Linux包生成完成！")
+            log_success("🎉 Linux包生成完成！")
+            log_info(f"📦 包文件已保存在: {{generator.output_dir}}/")
         else:
-            log_error(" Linux包生成失败")
+            log_error("❌ Linux包生成失败")
             
         return success
         
     except KeyboardInterrupt:
-        log_info(" 用户取消操作")
+        log_info("👋 用户取消操作")
         return False
     except Exception as e:
-        log_error(f" 生成Linux包时发生错误: {{e}}")
+        log_error(f"❌ 生成Linux包时发生错误: {{e}}")
         return False
     finally:
         input("按下任意键退出...")
