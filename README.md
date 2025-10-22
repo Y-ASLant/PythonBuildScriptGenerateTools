@@ -1,4 +1,4 @@
-# Python 构建脚本生成器
+# Python 构建脚本生成器-待重构（使用TUI）
 
 智能化 Python 打包工具，支持 Nuitka 和 PyInstaller，一键生成**完全独立**的构建脚本。
 
