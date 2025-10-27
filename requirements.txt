@@ -1,0 +1,9 @@
+altgraph==0.17.4
+loguru==0.7.3
+nuitka==2.8
+ordered-set==4.1.0
+packaging==25.0
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9
+setuptools==80.9.0
+zstandard==0.25.0

@@ -1,0 +1,12 @@
+[project]
+name = "PythonBuildScriptGenerate"
+version = "1.0.0"
+description = "PythonBuildScriptGenerateTools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "loguru>=0.7.3",
+    "nuitka>=2.7.12",
+    "pyinstaller>=6.15.0",
+    "setuptools>=80.9.0",
+]
