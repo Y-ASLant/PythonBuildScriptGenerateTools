@@ -34,6 +34,21 @@ class PyBuildTUI(App):
         width: auto;
         height: auto;
     }
+
+    Button,
+    Link,
+    ListItem,
+    Select,
+    SelectionList,
+    Switch,
+    Tab {
+        pointer: pointer;
+    }
+
+    Input,
+    MarkdownViewer {
+        pointer: text;
+    }
     """
 
     # 主题映射表：键位 -> 主题名
